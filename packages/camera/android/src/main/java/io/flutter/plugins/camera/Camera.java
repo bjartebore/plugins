@@ -50,6 +50,7 @@ public class Camera {
   private final Size previewSize;
   private final boolean enableAudio;
 
+  private int flashMode;
   private CameraDevice cameraDevice;
   private CameraCaptureSession cameraCaptureSession;
   private ImageReader pictureImageReader;
@@ -71,13 +72,19 @@ public class Camera {
     max,
   }
 
+  private final int CAMERA_FLASH_MODE_OFF = 0;
+  private final int CAMERA_FLASH_MODE_ALWAYS_FLASH = 1;
+  private final int CAMERA_FLASH_MODE_AUTO_FLASH = 2;
+  private final int CAMERA_FLASH_MODE_TORCH = 3;
+
   public Camera(
       final Activity activity,
       final SurfaceTextureEntry flutterTexture,
       final DartMessenger dartMessenger,
       final String cameraName,
       final String resolutionPreset,
-      final boolean enableAudio)
+      final boolean enableAudio,
+      final int flashMode)
       throws CameraAccessException {
     if (activity == null) {
       throw new IllegalStateException("No activity available!");
@@ -85,6 +92,7 @@ public class Camera {
 
     this.cameraName = cameraName;
     this.enableAudio = enableAudio;
+    this.flashMode = flashMode;
     this.flutterTexture = flutterTexture;
     this.dartMessenger = dartMessenger;
     this.cameraManager = (CameraManager) activity.getSystemService(Context.CAMERA_SERVICE);
@@ -250,6 +258,8 @@ public class Camera {
       captureBuilder.addTarget(pictureImageReader.getSurface());
       captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getMediaOrientation());
 
+      setFlashModeRequest(captureBuilder, flashMode);
+
       cameraCaptureSession.capture(
           captureBuilder.build(),
           new CameraCaptureSession.CaptureCallback() {
@@ -320,6 +330,9 @@ public class Camera {
               cameraCaptureSession = session;
               captureRequestBuilder.set(
                   CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
+
+              setFlashModeRequest(captureRequestBuilder, flashMode);
+
               cameraCaptureSession.setRepeatingRequest(captureRequestBuilder.build(), null, null);
               if (onSuccessCallback != null) {
                 onSuccessCallback.run();
@@ -473,6 +486,64 @@ public class Camera {
           img.close();
         },
         null);
+  }
+
+
+  public void setFlash(@NonNull final Result result, int mode) {
+    try {
+      // Force turning off the torch to avoid keeping the
+      // light on when another flash mode is selected
+      if (mode != CAMERA_FLASH_MODE_TORCH && flashMode == CAMERA_FLASH_MODE_TORCH) {
+        setFlashModeRequest(captureRequestBuilder, CAMERA_FLASH_MODE_OFF);
+        CaptureRequest request = captureRequestBuilder.build();
+        cameraCaptureSession.setRepeatingRequest(request, null, null);
+      }
+
+      // Keep the new mode
+      flashMode = mode;
+
+      // Rebuild Capture Session with flash and focus settings
+      setFlashModeRequest(captureRequestBuilder, flashMode);
+      CaptureRequest request = captureRequestBuilder.build();
+      cameraCaptureSession.setRepeatingRequest(request, null, null);
+
+      result.success(null);
+    } catch (Exception e) {
+      result.error("cameraFlashFailed", e.getMessage(), null);
+    }
+  }
+
+  private void setFlashModeRequest(CaptureRequest.Builder builderRequest, int mode) {
+    // Request Flash mode and set the tightly coupled auto Exposure mode
+    int flashRequestMode;
+    int autoExposureRequestMode;
+    switch (mode) {
+      case CAMERA_FLASH_MODE_ALWAYS_FLASH:
+        flashRequestMode = CameraMetadata.FLASH_MODE_OFF;
+        autoExposureRequestMode = CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH;
+        break;
+      case CAMERA_FLASH_MODE_AUTO_FLASH:
+        flashRequestMode = CameraMetadata.FLASH_MODE_OFF;
+        autoExposureRequestMode = CameraMetadata.CONTROL_AE_MODE_ON_AUTO_FLASH;
+        break;
+      case CAMERA_FLASH_MODE_TORCH:
+        flashRequestMode = CameraMetadata.FLASH_MODE_TORCH;
+        autoExposureRequestMode = CameraMetadata.CONTROL_AE_MODE_ON;
+        break;
+      default:
+        flashRequestMode = CameraMetadata.FLASH_MODE_OFF;
+        autoExposureRequestMode = CameraMetadata.CONTROL_AE_MODE_ON;
+    }
+
+    builderRequest.set(CaptureRequest.FLASH_MODE, flashRequestMode);
+    builderRequest.set(CaptureRequest.CONTROL_AE_MODE, autoExposureRequestMode);
+
+    // Request Auto Exposure mode as recommended when you switch the Flash
+    // more information:
+    // https://developer.android.com/reference/android/hardware/camera2/CaptureRequest.html#FLASH_MODE
+    builderRequest.set(
+            CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,
+            CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START);
   }
 
   private void closeCaptureSession() {

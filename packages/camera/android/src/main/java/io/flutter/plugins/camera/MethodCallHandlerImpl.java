@@ -1,6 +1,7 @@
 package io.flutter.plugins.camera;
 
 import android.app.Activity;
+import android.content.pm.PackageManager;
 import android.hardware.camera2.CameraAccessException;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -123,6 +124,16 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
           }
           break;
         }
+      case "setFlash":
+      {
+        camera.setFlash(result, call.argument("mode"));
+        break;
+      }
+      case "hasFlash":
+      {
+        result.success(hasFlash());
+        break;
+      }
       case "dispose":
         {
           if (camera != null) {
@@ -141,10 +152,18 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
     methodChannel.setMethodCallHandler(null);
   }
 
+  private boolean hasFlash() {
+    return activity
+            .getApplicationContext()
+            .getPackageManager()
+            .hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH);
+  }
+
   private void instantiateCamera(MethodCall call, Result result) throws CameraAccessException {
     String cameraName = call.argument("cameraName");
     String resolutionPreset = call.argument("resolutionPreset");
     boolean enableAudio = call.argument("enableAudio");
+    int flashMode = call.argument("flashMode");
     TextureRegistry.SurfaceTextureEntry flutterSurfaceTexture =
         textureRegistry.createSurfaceTexture();
     DartMessenger dartMessenger = new DartMessenger(messenger, flutterSurfaceTexture.id());
@@ -155,7 +174,8 @@ final class MethodCallHandlerImpl implements MethodChannel.MethodCallHandler {
             dartMessenger,
             cameraName,
             resolutionPreset,
-            enableAudio);
+            enableAudio,
+            flashMode);
 
     camera.open(result);
   }

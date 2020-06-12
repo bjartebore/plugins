@@ -38,6 +38,21 @@ enum ResolutionPreset {
   max,
 }
 
+/// Define the desired mode for the camera device's flash control.
+enum FlashMode {
+  /// The flash is disabled
+  off,
+
+  /// Fire flash for this capture
+  alwaysFlash,
+
+  /// Fire the flash for this capture if needed
+  autoFlash,
+
+  /// Flash light is continuously ON
+  torch,
+}
+
 // ignore: inference_failure_on_function_return_type
 typedef onLatestImageAvailable = Function(CameraImage image);
 
@@ -245,6 +260,7 @@ class CameraController extends ValueNotifier<CameraValue> {
     this.description,
     this.resolutionPreset, {
     this.enableAudio = true,
+    this.flashMode = FlashMode.off,
   }) : super(const CameraValue.uninitialized());
 
   final CameraDescription description;
@@ -252,6 +268,9 @@ class CameraController extends ValueNotifier<CameraValue> {
 
   /// Whether to include audio when recording a video.
   final bool enableAudio;
+
+  /// Set the initial Flash state
+  final FlashMode flashMode;
 
   int _textureId;
   bool _isDisposed = false;
@@ -275,6 +294,7 @@ class CameraController extends ValueNotifier<CameraValue> {
           'cameraName': description.name,
           'resolutionPreset': serializeResolutionPreset(resolutionPreset),
           'enableAudio': enableAudio,
+          'flashMode': flashMode.index,
         },
       );
       _textureId = reply['textureId'];
@@ -514,6 +534,43 @@ class CameraController extends ValueNotifier<CameraValue> {
       throw CameraException(e.code, e.message);
     }
   }
+
+
+  /// Set the Flash light [mode]
+  /// See [FlashMode] enum for available options
+  Future<void> setFlash({FlashMode mode = FlashMode.off}) async {
+    if (!value.isInitialized || _isDisposed) {
+      throw CameraException(
+        'Uninitialized CameraController.',
+        'flashMode was called on uninitialized CameraController',
+      );
+    }
+
+    try {
+      await _channel.invokeMethod<void>(
+          'setFlash', <String, dynamic>{'mode': mode.index});
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
+  /// check if the device has a flash.
+  Future<bool> get hasFlash async {
+    if (!value.isInitialized || _isDisposed) {
+      throw CameraException(
+        'Uninitialized CameraController.',
+        'hasFlash was called on uninitialized CameraController',
+      );
+    }
+
+    try {
+      return await _channel.invokeMethod<bool>('hasFlash');
+    } on PlatformException catch (e) {
+      throw CameraException(e.code, e.message);
+    }
+  }
+
+
 
   /// Pause video recording.
   ///
